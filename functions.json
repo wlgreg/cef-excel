@@ -77,7 +77,7 @@
                     "type": "string"
                 },
                 {
-                    "description": "Data endpoint to retrieve. Supports NAV, PRICE, DISCOUNT, DISCOUNT5YAVG.",
+                    "description": "Data endpoint to retrieve. Supports NAV, PRICE, DISCOUNT, DISCOUNT5YAVG, DISTYIELDNAV, DISTYIELDPRICE.",
                     "name": "endpoint",
                     "type": "string"
                 },
