@@ -72,7 +72,7 @@ export function logMessage(message: string): string {
  * Gets CEF data for a ticker and endpoint.
  * @customfunction GETCEFDATA
  * @param ticker CEF ticker symbol, e.g. AWP.
- * @param endpoint Data endpoint to retrieve. Supports NAV, PRICE, DISCOUNT, DISCOUNT5YAVG, DISTYIELDNAV, DISTYIELDPRICE, ANNDISTRATENAV1Y, ANNDISTRATENAV3Y, ANNDISTRATENAV5Y.
+ * @param endpoint Data endpoint to retrieve. Supports NAV, PRICE, DISCOUNT, DISCOUNT5YAVG, DISTYIELDNAV, DISTYIELDPRICE, ANNDISTRATENAV1Y, ANNDISTRATENAV3Y, ANNDISTRATENAV5Y, RETURNONNAV1Y.
  * @param debug Optional TRUE to return diagnostic text instead of #VALUE on errors.
  * @returns Requested value for the specified ticker and endpoint, or N/A when no ticker data is available.
  */
@@ -106,6 +106,9 @@ export async function getCEFData(
       case "DISTYIELDPRICE":
       case "YIELDPRICE":
         return (await getDailyPricingValue(normalizedTicker, "DISTYIELDPRICE")) ?? "N/A";
+      case "RETURNONNAV1Y":
+      case "RONAV1Y":
+        return (await getDailyPricingValue(normalizedTicker, "RETURNONNAV1Y")) ?? "N/A";
       case "ANNDISTRATENAV1Y":
       case "DISTYIELDNAV1Y":
         return (await getAnnualizedDistributionRateOnNav(normalizedTicker, 1)) ?? "N/A";
@@ -124,7 +127,7 @@ export async function getCEFData(
         return (await getFiveYearAverageDiscount(normalizedTicker)) ?? "N/A";
       default:
         throw new Error(
-          `Unsupported endpoint '${endpoint}'. Currently supported: NAV, PRICE, DISCOUNT, DISCOUNT5YAVG, DISTYIELDNAV (alias YIELDNAV), DISTYIELDPRICE (alias YIELDPRICE), ANNDISTRATENAV1Y, ANNDISTRATENAV3Y (aliases ANNDISTRATENAVTRAIL3Y, DISTYIELDNAVTRAIL3Y), ANNDISTRATENAV5Y (aliases ANNDISTRATENAVTRAIL5Y, DISTYIELDNAVTRAIL5Y).`
+          `Unsupported endpoint '${endpoint}'. Currently supported: NAV, PRICE, DISCOUNT, DISCOUNT5YAVG, DISTYIELDNAV (alias YIELDNAV), DISTYIELDPRICE (alias YIELDPRICE), RETURNONNAV1Y (alias RONAV1Y), ANNDISTRATENAV1Y, ANNDISTRATENAV3Y (aliases ANNDISTRATENAVTRAIL3Y, DISTYIELDNAVTRAIL3Y), ANNDISTRATENAV5Y (aliases ANNDISTRATENAVTRAIL5Y, DISTYIELDNAVTRAIL5Y).`
         );
     }
   } catch (error) {
@@ -164,6 +167,7 @@ interface DailyPricingRecord {
   Discount?: number;
   DistributionRateNAV?: number;
   DistributionRatePrice?: number;
+  ReturnOnNAV?: number;
 }
 
 interface DailyPricingCacheEntry {
@@ -208,7 +212,7 @@ function getDailyPricingCacheStatus(): string {
 
 async function getDailyPricingValue(
   ticker: string,
-  valueType: "NAV" | "PRICE" | "DISCOUNT" | "DISTYIELDNAV" | "DISTYIELDPRICE"
+  valueType: "NAV" | "PRICE" | "DISCOUNT" | "DISTYIELDNAV" | "DISTYIELDPRICE" | "RETURNONNAV1Y"
 ): Promise<number | null> {
   const data = await getDailyPricingData();
   if (!Array.isArray(data) || data.length === 0) {
@@ -229,7 +233,9 @@ async function getDailyPricingValue(
           ? tickerRow.Discount
           : valueType === "DISTYIELDNAV"
             ? tickerRow.DistributionRateNAV
-            : tickerRow.DistributionRatePrice;
+            : valueType === "DISTYIELDPRICE"
+              ? tickerRow.DistributionRatePrice
+              : tickerRow.ReturnOnNAV;
   if (typeof value !== "number" || Number.isNaN(value)) {
     return null;
   }
@@ -244,7 +250,7 @@ async function getDailyPricingData(): Promise<DailyPricingRecord[]> {
   }
 
   const url =
-    "https://www.cefconnect.com/api/v3/DailyPricing?props=Ticker,Price,NAV,Discount,DistributionRateNAV,DistributionRatePrice";
+    "https://www.cefconnect.com/api/v3/DailyPricing?props=Ticker,Price,NAV,Discount,DistributionRateNAV,DistributionRatePrice,ReturnOnNAV";
   const response = await fetch(url, {
     method: "GET",
     headers: {
