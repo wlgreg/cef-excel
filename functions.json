@@ -80,10 +80,34 @@
                     "description": "Data endpoint to retrieve. Supports NAV, PRICE, DISCOUNT, DISCOUNT5YAVG.",
                     "name": "endpoint",
                     "type": "string"
+                },
+                {
+                    "description": "Optional TRUE to return diagnostic text instead of #VALUE on errors.",
+                    "name": "debug",
+                    "optional": true,
+                    "type": "boolean"
+                }
+            ],
+            "result": {}
+        },
+        {
+            "description": "Returns diagnostic information for a GETCEFDATA request.",
+            "id": "GETCEFDATADEBUG",
+            "name": "GETCEFDATADEBUG",
+            "parameters": [
+                {
+                    "description": "CEF ticker symbol, e.g. AWP.",
+                    "name": "ticker",
+                    "type": "string"
+                },
+                {
+                    "description": "Data endpoint to retrieve.",
+                    "name": "endpoint",
+                    "type": "string"
                 }
             ],
             "result": {
-                "type": "number"
+                "type": "string"
             }
         }
     ]
