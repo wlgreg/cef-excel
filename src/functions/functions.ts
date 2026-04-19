@@ -73,9 +73,9 @@ export function logMessage(message: string): string {
  * @customfunction GETCEFDATA
  * @param ticker CEF ticker symbol, e.g. AWP.
  * @param endpoint Data endpoint to retrieve. Supports NAV, PRICE, DISCOUNT, DISCOUNT5YAVG.
- * @returns Requested value for the specified ticker and endpoint.
+ * @returns Requested value for the specified ticker and endpoint, or N/A when no ticker data is available.
  */
-export async function getCEFData(ticker: string, endpoint: string): Promise<number> {
+export async function getCEFData(ticker: string, endpoint: string): Promise<number | string> {
   const normalizedTicker = (ticker || "").trim().toUpperCase();
   const normalizedEndpoint = (endpoint || "").trim().toUpperCase();
 
@@ -89,14 +89,14 @@ export async function getCEFData(ticker: string, endpoint: string): Promise<numb
 
   switch (normalizedEndpoint) {
     case "NAV":
-      return await getDailyPricingValue(normalizedTicker, "NAV");
+      return (await getDailyPricingValue(normalizedTicker, "NAV")) ?? "N/A";
     case "PRICE":
-      return await getDailyPricingValue(normalizedTicker, "PRICE");
+      return (await getDailyPricingValue(normalizedTicker, "PRICE")) ?? "N/A";
     case "DISCOUNT":
-      return await getDailyPricingValue(normalizedTicker, "DISCOUNT");
+      return (await getDailyPricingValue(normalizedTicker, "DISCOUNT")) ?? "N/A";
     case "DISCOUNT5YAVG":
     case "5YDISCOUNT":
-      return await getFiveYearAverageDiscount(normalizedTicker);
+      return (await getFiveYearAverageDiscount(normalizedTicker)) ?? "N/A";
     default:
       throw new Error(
         `Unsupported endpoint '${endpoint}'. Currently supported: NAV, PRICE, DISCOUNT, DISCOUNT5YAVG.`
@@ -132,7 +132,7 @@ let dailyPricingCache: DailyPricingCacheEntry | null = null;
 async function getDailyPricingValue(
   ticker: string,
   valueType: "NAV" | "PRICE" | "DISCOUNT"
-): Promise<number> {
+): Promise<number | null> {
   const data = await getDailyPricingData();
   if (!Array.isArray(data) || data.length === 0) {
     throw new Error("DailyPricing API returned no data.");
@@ -140,7 +140,7 @@ async function getDailyPricingValue(
 
   const tickerRow = data.find((record) => String(record.Ticker || "").toUpperCase() === ticker);
   if (!tickerRow) {
-    throw new Error(`Ticker '${ticker}' was not found in DailyPricing data.`);
+    return null;
   }
 
   const value =
@@ -150,7 +150,7 @@ async function getDailyPricingValue(
         ? tickerRow.NAV
         : tickerRow.Discount;
   if (typeof value !== "number" || Number.isNaN(value)) {
-    throw new Error(`Could not find ${valueType} value for ticker '${ticker}'.`);
+    return null;
   }
 
   return value;
@@ -187,7 +187,7 @@ async function getDailyPricingData(): Promise<DailyPricingRecord[]> {
   return data;
 }
 
-async function getFiveYearAverageDiscount(ticker: string): Promise<number> {
+async function getFiveYearAverageDiscount(ticker: string): Promise<number | null> {
   const url = `https://www.cefconnect.com/api/v3/pricinghistory/${encodeURIComponent(ticker)}/5Y`;
   const response = await fetch(url, {
     method: "GET",
@@ -215,7 +215,7 @@ async function getFiveYearAverageDiscount(ticker: string): Promise<number> {
   return await getFiveYearAverageDiscountFromSummaryPage(ticker);
 }
 
-async function getFiveYearAverageDiscountFromSummaryPage(ticker: string): Promise<number> {
+async function getFiveYearAverageDiscountFromSummaryPage(ticker: string): Promise<number | null> {
   const url = `https://www.cefconnect.com/fund/${encodeURIComponent(ticker)}`;
   const response = await fetch(url, {
     method: "GET",
@@ -231,19 +231,19 @@ async function getFiveYearAverageDiscountFromSummaryPage(ticker: string): Promis
   const html = await response.text();
   const discountTable = html.match(/<table[^>]*id="[^"]*DiscountGrid"[\s\S]*?<\/table>/i)?.[0];
   if (!discountTable) {
-    throw new Error(`Could not find discount data for ticker '${ticker}'.`);
+    return null;
   }
 
   const fiveYearRow = discountTable.match(
     /<tr[^>]*>[\s\S]*?<td[^>]*>\s*5 Year\s*<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>[\s\S]*?<\/tr>/i
   )?.[1];
   if (!fiveYearRow) {
-    throw new Error(`Could not find 5 Year average discount for ticker '${ticker}'.`);
+    return null;
   }
 
   const parsedValue = parseNumberFromHtmlCell(fiveYearRow);
   if (Number.isNaN(parsedValue)) {
-    throw new Error(`Unable to parse 5 Year average discount for ticker '${ticker}'.`);
+    return null;
   }
 
   return parsedValue;

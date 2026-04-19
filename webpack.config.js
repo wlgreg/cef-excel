@@ -7,7 +7,7 @@ const HtmlWebpackPlugin = require("html-webpack-plugin");
 const path = require("path");
 
 const urlDev = "https://localhost:3000/";
-const urlProd = "https://www.contoso.com/"; // CHANGE THIS TO YOUR PRODUCTION DEPLOYMENT LOCATION
+const urlProd = "https://wlgreg.github.io/cef-excel/";
 
 /* global require, module, process, __dirname */
 
@@ -78,7 +78,10 @@ module.exports = async (env, options) => {
               if (dev) {
                 return content;
               } else {
-                return content.toString().replace(urlDev, urlProd);
+                return content
+                  .toString()
+                  .replace(new RegExp(urlDev.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), urlProd)
+                  .replace(/https:\/\/localhost:3000/g, urlProd.replace(/\/$/, ""));
               }
             },
           },
