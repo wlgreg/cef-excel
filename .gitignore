@@ -1,0 +1,19 @@
+# Build output
+dist/
+lib/
+
+# Node modules folder
+node_modules/
+
+# Environment files
+.env
+.env.*
+
+# Test output
+coverage/
+
+# OS-generated files
+.DS_Store
+
+# Local editor settings
+.vscode/
