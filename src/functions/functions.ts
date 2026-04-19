@@ -72,7 +72,7 @@ export function logMessage(message: string): string {
  * Gets CEF data for a ticker and endpoint.
  * @customfunction GETCEFDATA
  * @param ticker CEF ticker symbol, e.g. AWP.
- * @param endpoint Data endpoint to retrieve. Supports NAV, PRICE, DISCOUNT, DISCOUNT5YAVG.
+ * @param endpoint Data endpoint to retrieve. Supports NAV, PRICE, DISCOUNT, DISCOUNT5YAVG, DISTYIELDNAV, DISTYIELDPRICE.
  * @param debug Optional TRUE to return diagnostic text instead of #VALUE on errors.
  * @returns Requested value for the specified ticker and endpoint, or N/A when no ticker data is available.
  */
@@ -100,12 +100,18 @@ export async function getCEFData(
         return (await getDailyPricingValue(normalizedTicker, "PRICE")) ?? "N/A";
       case "DISCOUNT":
         return (await getDailyPricingValue(normalizedTicker, "DISCOUNT")) ?? "N/A";
+      case "DISTYIELDNAV":
+      case "YIELDNAV":
+        return (await getDailyPricingValue(normalizedTicker, "DISTYIELDNAV")) ?? "N/A";
+      case "DISTYIELDPRICE":
+      case "YIELDPRICE":
+        return (await getDailyPricingValue(normalizedTicker, "DISTYIELDPRICE")) ?? "N/A";
       case "DISCOUNT5YAVG":
       case "5YDISCOUNT":
         return (await getFiveYearAverageDiscount(normalizedTicker)) ?? "N/A";
       default:
         throw new Error(
-          `Unsupported endpoint '${endpoint}'. Currently supported: NAV, PRICE, DISCOUNT, DISCOUNT5YAVG.`
+          `Unsupported endpoint '${endpoint}'. Currently supported: NAV, PRICE, DISCOUNT, DISCOUNT5YAVG, DISTYIELDNAV (alias YIELDNAV), DISTYIELDPRICE (alias YIELDPRICE).`
         );
     }
   } catch (error) {
@@ -143,6 +149,8 @@ interface DailyPricingRecord {
   Price?: number;
   NAV?: number;
   Discount?: number;
+  DistributionRateNAV?: number;
+  DistributionRatePrice?: number;
 }
 
 interface DailyPricingCacheEntry {
@@ -178,7 +186,7 @@ function getDailyPricingCacheStatus(): string {
 
 async function getDailyPricingValue(
   ticker: string,
-  valueType: "NAV" | "PRICE" | "DISCOUNT"
+  valueType: "NAV" | "PRICE" | "DISCOUNT" | "DISTYIELDNAV" | "DISTYIELDPRICE"
 ): Promise<number | null> {
   const data = await getDailyPricingData();
   if (!Array.isArray(data) || data.length === 0) {
@@ -195,7 +203,11 @@ async function getDailyPricingValue(
       ? tickerRow.Price
       : valueType === "NAV"
         ? tickerRow.NAV
-        : tickerRow.Discount;
+        : valueType === "DISCOUNT"
+          ? tickerRow.Discount
+          : valueType === "DISTYIELDNAV"
+            ? tickerRow.DistributionRateNAV
+            : tickerRow.DistributionRatePrice;
   if (typeof value !== "number" || Number.isNaN(value)) {
     return null;
   }
@@ -209,7 +221,8 @@ async function getDailyPricingData(): Promise<DailyPricingRecord[]> {
     return dailyPricingCache.data;
   }
 
-  const url = "https://www.cefconnect.com/api/v3/DailyPricing?props=Ticker,Price,NAV,Discount";
+  const url =
+    "https://www.cefconnect.com/api/v3/DailyPricing?props=Ticker,Price,NAV,Discount,DistributionRateNAV,DistributionRatePrice";
   const response = await fetch(url, {
     method: "GET",
     headers: {
