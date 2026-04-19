@@ -111,16 +111,20 @@ export async function getCEFData(
         return (await getAnnualizedDistributionRateOnNav(normalizedTicker, 1)) ?? "N/A";
       case "ANNDISTRATENAV3Y":
       case "DISTYIELDNAV3Y":
+      case "ANNDISTRATENAVTRAIL3Y":
+      case "DISTYIELDNAVTRAIL3Y":
         return (await getAnnualizedDistributionRateOnNav(normalizedTicker, 3)) ?? "N/A";
       case "ANNDISTRATENAV5Y":
       case "DISTYIELDNAV5Y":
+      case "ANNDISTRATENAVTRAIL5Y":
+      case "DISTYIELDNAVTRAIL5Y":
         return (await getAnnualizedDistributionRateOnNav(normalizedTicker, 5)) ?? "N/A";
       case "DISCOUNT5YAVG":
       case "5YDISCOUNT":
         return (await getFiveYearAverageDiscount(normalizedTicker)) ?? "N/A";
       default:
         throw new Error(
-          `Unsupported endpoint '${endpoint}'. Currently supported: NAV, PRICE, DISCOUNT, DISCOUNT5YAVG, DISTYIELDNAV (alias YIELDNAV), DISTYIELDPRICE (alias YIELDPRICE), ANNDISTRATENAV1Y, ANNDISTRATENAV3Y, ANNDISTRATENAV5Y.`
+          `Unsupported endpoint '${endpoint}'. Currently supported: NAV, PRICE, DISCOUNT, DISCOUNT5YAVG, DISTYIELDNAV (alias YIELDNAV), DISTYIELDPRICE (alias YIELDPRICE), ANNDISTRATENAV1Y, ANNDISTRATENAV3Y (aliases ANNDISTRATENAVTRAIL3Y, DISTYIELDNAVTRAIL3Y), ANNDISTRATENAV5Y (aliases ANNDISTRATENAVTRAIL5Y, DISTYIELDNAVTRAIL5Y).`
         );
     }
   } catch (error) {
@@ -269,6 +273,12 @@ async function getAnnualizedDistributionRateOnNav(
   ticker: string,
   years: 1 | 3 | 5
 ): Promise<number | null> {
+  // DailyPricing exposes DistributionRateNAV as the current annualized rate.
+  // Probed period/timeframe query params do not return distinct values, so use this directly for 1Y.
+  if (years === 1) {
+    return await getDailyPricingValue(ticker, "DISTYIELDNAV");
+  }
+
   const nav = await getDailyPricingValue(ticker, "NAV");
   if (typeof nav !== "number" || Number.isNaN(nav) || nav <= 0) {
     return null;
