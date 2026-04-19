@@ -73,34 +73,68 @@ export function logMessage(message: string): string {
  * @customfunction GETCEFDATA
  * @param ticker CEF ticker symbol, e.g. AWP.
  * @param endpoint Data endpoint to retrieve. Supports NAV, PRICE, DISCOUNT, DISCOUNT5YAVG.
+ * @param debug Optional TRUE to return diagnostic text instead of #VALUE on errors.
  * @returns Requested value for the specified ticker and endpoint, or N/A when no ticker data is available.
  */
-export async function getCEFData(ticker: string, endpoint: string): Promise<number | string> {
+export async function getCEFData(
+  ticker: string,
+  endpoint: string,
+  debug?: boolean
+): Promise<number | string> {
   const normalizedTicker = (ticker || "").trim().toUpperCase();
   const normalizedEndpoint = (endpoint || "").trim().toUpperCase();
 
-  if (!normalizedTicker) {
-    throw new Error("Ticker is required.");
-  }
+  try {
+    if (!normalizedTicker) {
+      throw new Error("Ticker is required.");
+    }
 
-  if (!normalizedEndpoint) {
-    throw new Error("Endpoint is required.");
-  }
+    if (!normalizedEndpoint) {
+      throw new Error("Endpoint is required.");
+    }
 
-  switch (normalizedEndpoint) {
-    case "NAV":
-      return (await getDailyPricingValue(normalizedTicker, "NAV")) ?? "N/A";
-    case "PRICE":
-      return (await getDailyPricingValue(normalizedTicker, "PRICE")) ?? "N/A";
-    case "DISCOUNT":
-      return (await getDailyPricingValue(normalizedTicker, "DISCOUNT")) ?? "N/A";
-    case "DISCOUNT5YAVG":
-    case "5YDISCOUNT":
-      return (await getFiveYearAverageDiscount(normalizedTicker)) ?? "N/A";
-    default:
-      throw new Error(
-        `Unsupported endpoint '${endpoint}'. Currently supported: NAV, PRICE, DISCOUNT, DISCOUNT5YAVG.`
-      );
+    switch (normalizedEndpoint) {
+      case "NAV":
+        return (await getDailyPricingValue(normalizedTicker, "NAV")) ?? "N/A";
+      case "PRICE":
+        return (await getDailyPricingValue(normalizedTicker, "PRICE")) ?? "N/A";
+      case "DISCOUNT":
+        return (await getDailyPricingValue(normalizedTicker, "DISCOUNT")) ?? "N/A";
+      case "DISCOUNT5YAVG":
+      case "5YDISCOUNT":
+        return (await getFiveYearAverageDiscount(normalizedTicker)) ?? "N/A";
+      default:
+        throw new Error(
+          `Unsupported endpoint '${endpoint}'. Currently supported: NAV, PRICE, DISCOUNT, DISCOUNT5YAVG.`
+        );
+    }
+  } catch (error) {
+    if (debug === true) {
+      const message = error instanceof Error ? error.message : String(error);
+      return `ERROR | ticker=${normalizedTicker || "(blank)"} | endpoint=${normalizedEndpoint || "(blank)"} | message=${message} | cache=${getDailyPricingCacheStatus()} | time=${new Date().toISOString()}`;
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * Returns diagnostic information for a GETCEFDATA request.
+ * @customfunction GETCEFDATADEBUG
+ * @param ticker CEF ticker symbol, e.g. AWP.
+ * @param endpoint Data endpoint to retrieve.
+ * @returns Diagnostic status text and either value or detailed error information.
+ */
+export async function getCEFDataDebug(ticker: string, endpoint: string): Promise<string> {
+  const normalizedTicker = (ticker || "").trim().toUpperCase();
+  const normalizedEndpoint = (endpoint || "").trim().toUpperCase();
+
+  try {
+    const value = await getCEFData(normalizedTicker, normalizedEndpoint);
+    return `OK | ticker=${normalizedTicker || "(blank)"} | endpoint=${normalizedEndpoint || "(blank)"} | value=${value} | cache=${getDailyPricingCacheStatus()} | time=${new Date().toISOString()}`;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return `ERROR | ticker=${normalizedTicker || "(blank)"} | endpoint=${normalizedEndpoint || "(blank)"} | message=${message} | cache=${getDailyPricingCacheStatus()} | time=${new Date().toISOString()}`;
   }
 }
 
@@ -128,6 +162,19 @@ interface PricingHistoryResponse {
 
 const DAILY_PRICING_CACHE_TTL_MS = 10000;
 let dailyPricingCache: DailyPricingCacheEntry | null = null;
+
+function getDailyPricingCacheStatus(): string {
+  if (!dailyPricingCache) {
+    return "empty";
+  }
+
+  const msToExpiry = dailyPricingCache.expiresAt - Date.now();
+  if (msToExpiry > 0) {
+    return `warm:${Math.floor(msToExpiry / 1000)}s`;
+  }
+
+  return `stale:${Math.abs(Math.floor(msToExpiry / 1000))}s`;
+}
 
 async function getDailyPricingValue(
   ticker: string,

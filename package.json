@@ -15,6 +15,7 @@
     "lint:fix": "office-addin-lint fix",
     "prestart": "npm run build",
     "prettier": "office-addin-lint prettier",
+    "restart:clean": "npm run stop && pkill -f '^webpack\\s' || true && npm run start -- desktop --app excel",
     "signin": "office-addin-dev-settings m365-account login",
     "signout": "office-addin-dev-settings m365-account logout",
     "start": "office-addin-debugging start manifest.xml",
