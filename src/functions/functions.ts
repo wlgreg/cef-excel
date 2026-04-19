@@ -72,7 +72,7 @@ export function logMessage(message: string): string {
  * Gets CEF data for a ticker and endpoint.
  * @customfunction GETCEFDATA
  * @param ticker CEF ticker symbol, e.g. AWP.
- * @param endpoint Data endpoint to retrieve. Supports NAV, PRICE, DISCOUNT, DISCOUNT5YAVG, DISTYIELDNAV, DISTYIELDPRICE.
+ * @param endpoint Data endpoint to retrieve. Supports NAV, PRICE, DISCOUNT, DISCOUNT5YAVG, DISTYIELDNAV, DISTYIELDPRICE, ANNDISTRATENAV1Y, ANNDISTRATENAV3Y, ANNDISTRATENAV5Y.
  * @param debug Optional TRUE to return diagnostic text instead of #VALUE on errors.
  * @returns Requested value for the specified ticker and endpoint, or N/A when no ticker data is available.
  */
@@ -106,12 +106,21 @@ export async function getCEFData(
       case "DISTYIELDPRICE":
       case "YIELDPRICE":
         return (await getDailyPricingValue(normalizedTicker, "DISTYIELDPRICE")) ?? "N/A";
+      case "ANNDISTRATENAV1Y":
+      case "DISTYIELDNAV1Y":
+        return (await getAnnualizedDistributionRateOnNav(normalizedTicker, 1)) ?? "N/A";
+      case "ANNDISTRATENAV3Y":
+      case "DISTYIELDNAV3Y":
+        return (await getAnnualizedDistributionRateOnNav(normalizedTicker, 3)) ?? "N/A";
+      case "ANNDISTRATENAV5Y":
+      case "DISTYIELDNAV5Y":
+        return (await getAnnualizedDistributionRateOnNav(normalizedTicker, 5)) ?? "N/A";
       case "DISCOUNT5YAVG":
       case "5YDISCOUNT":
         return (await getFiveYearAverageDiscount(normalizedTicker)) ?? "N/A";
       default:
         throw new Error(
-          `Unsupported endpoint '${endpoint}'. Currently supported: NAV, PRICE, DISCOUNT, DISCOUNT5YAVG, DISTYIELDNAV (alias YIELDNAV), DISTYIELDPRICE (alias YIELDPRICE).`
+          `Unsupported endpoint '${endpoint}'. Currently supported: NAV, PRICE, DISCOUNT, DISCOUNT5YAVG, DISTYIELDNAV (alias YIELDNAV), DISTYIELDPRICE (alias YIELDPRICE), ANNDISTRATENAV1Y, ANNDISTRATENAV3Y, ANNDISTRATENAV5Y.`
         );
     }
   } catch (error) {
@@ -166,6 +175,15 @@ interface PricingHistoryResponse {
   Data?: {
     PriceHistory?: PricingHistoryPoint[];
   };
+}
+
+interface DistributionCharterPoint {
+  Date?: string;
+  Amount?: number;
+}
+
+interface DistributionCharterResponse {
+  Data?: DistributionCharterPoint[];
 }
 
 const DAILY_PRICING_CACHE_TTL_MS = 10000;
@@ -245,6 +263,58 @@ async function getDailyPricingData(): Promise<DailyPricingRecord[]> {
   };
 
   return data;
+}
+
+async function getAnnualizedDistributionRateOnNav(
+  ticker: string,
+  years: 1 | 3 | 5
+): Promise<number | null> {
+  const nav = await getDailyPricingValue(ticker, "NAV");
+  if (typeof nav !== "number" || Number.isNaN(nav) || nav <= 0) {
+    return null;
+  }
+
+  const period = `${years}Y`;
+  const url = `https://www.cefconnect.com/api/v3/DistributionCharter/fund/${encodeURIComponent(ticker)}/${period}`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`CEFConnect request failed (${response.status}).`);
+  }
+
+  const json = (await response.json()) as DistributionCharterResponse;
+  const points = Array.isArray(json?.Data) ? json.Data : [];
+  if (points.length === 0) {
+    return null;
+  }
+
+  const now = Date.now();
+  const totalDistributions = points.reduce((sum, point) => {
+    const amount = point?.Amount;
+    const dateMs = point?.Date ? Date.parse(point.Date) : Number.NaN;
+    if (typeof amount !== "number" || Number.isNaN(amount)) {
+      return sum;
+    }
+
+    // Ignore future dated payouts when computing trailing annualized rates.
+    if (!Number.isNaN(dateMs) && dateMs > now) {
+      return sum;
+    }
+
+    return sum + amount;
+  }, 0);
+
+  if (totalDistributions <= 0) {
+    return null;
+  }
+
+  const annualizedAmount = totalDistributions / years;
+  return (annualizedAmount / nav) * 100;
 }
 
 async function getFiveYearAverageDiscount(ticker: string): Promise<number | null> {
